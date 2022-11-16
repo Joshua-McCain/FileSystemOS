@@ -16,6 +16,18 @@
  */
 #define MAX_FILENAME_SIZE 509
 
+/* These define statements are for determining how many blocks are allocated to inodes/dentries based on # files
+ * permitted on the system. This is to avoid user space blocks overriding file system blocks.
+ *
+ * MAX_FILESYS_BLOCKS is the cutoff for the amount of blocks used to support the file system.
+ * ***IMPORTANT*** since the disk starts addressing at 0, max filesys blocks is actually the address of the first
+ * block available for user input.
+ */
+#define MAX_FILES_SUPPORTED 500
+#define INODE_BLOCKS ceil(MAX_FILES_SUPPORTED / (SOFTWARE_DISK_BLOCK_SIZE / sizeof(Inode)))
+#define DENTRY_BLOCKS ceil(MAX_FILES_SUPPORTED / (SOFTWARE_DISK_BLOCK_SIZE / sizeof(DirEntry)))
+#define MAX_FILESYS_BLOCKS (2 + INODE_BLOCKS + DENTRY_BLOCKS) // + 2 for the bitmap blocks
+
 //Update with caution, this value must keep Inode struct's size a multiple of 4096, which is the size of a block.
 #define NUM_DENTRIES_IN_INODE 13
 
@@ -36,7 +48,7 @@ int get_bit(BitmapBlock *bblock, int n);
 //------------STRUCTURES------------
 
 /* Struct of directory entries meant for finding inodes and keeping track of the file being open
- * This struct is compiled together in a block by the DirEntryBlock struct.
+ * This struct is compiled together in a block by the DirEntryBlock struct. Holds 512 bytes for each entry.
  *
  * ***Credit to Dr. Golden for this struct*** 
  */
@@ -47,19 +59,20 @@ typedef struct _DirEntry {
 } DirEntry;
 
 /* Because the DirEntry struct is made to be a multiple of the block size, this struct can evenly hold a number of
- * DirEntries
+ * DirEntries. This block should hold 8 dentries if the size of 1 is 512 bytes.
  */
 typedef struct _DirEntryBlock {
 	DirEntry dentries[SOFTWARE_DISK_BLOCK_SIZE / sizeof(DirEntry)];
 } DirEntryBlock;
 
-
+//Size of the inode is 32 bytes, important to keep 4096 divisible by the size
 typedef struct _Inode {
 	uint32_t file_size;
 	uint16_t dir_blocks[NUM_DENTRIES_IN_INODE + 1]; //Holds enough for dir entries and 1 indir entry which will be
 							//at the back of this array
 } Inode;
 
+//This struct should be able to hold 128 inodes if the size of the inode stays at size 32 bytes.
 typedef struct _InodeBlock {
 	Inode inodes[SOFTWARE_DISK_BLOCK_SIZE / sizeof(Inode)];
 } InodeBlock;
@@ -80,7 +93,10 @@ typedef struct _BitmapBlock {
 } BitmapBlock;
 
 
-//------------FUNCTIONS------------
+//------------FILESYSTEM FUNCTIONS------------
+
+
+//------------SUPPORT FUNCTIONS------------
 
 
 
