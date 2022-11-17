@@ -19,8 +19,8 @@
 /* These define statements are for determining how many blocks are allocated to inodes/dentries based on # files
  * permitted on the system.
  *
- * MAX_SETUP_BLOCKS is the cutoff for the amount of blocks used to support the file system.
- * ***IMPORTANT*** since the disk starts addressing at 0, max setup blocks is actually the address of the first
+ * SETUP_BLOCKS is the cutoff for the amount of blocks used to support the file system.
+ * ***IMPORTANT*** since the disk starts addressing at 0, setup blocks is actually the address of the first
  * block available for user input.
  */
 #define MAX_FILES_SUPPORTED 512
@@ -29,10 +29,13 @@
 
 #define INODE_BLOCKS ceil(MAX_FILES_SUPPORTED / NUM_INODE_IN_BLOCK) // 512 / 128 = *4*
 #define DENTRY_BLOCKS ceil(MAX_FILES_SUPPORTED / NUM_DENTRY_IN_BLOCK) // 512 / 8 = *64*
-#define MAX_SETUP_BLOCKS (2 + INODE_BLOCKS + DENTRY_BLOCKS) // 70
+#define SETUP_BLOCKS (2 + INODE_BLOCKS + DENTRY_BLOCKS) // 70
+#define NUM_USER_BLOCKS (software_disk_size() - SETUP_BLOCKS) // 4096 - 70 = *4026*
 
 //The following values start from 0 blocks on the disk, with the values shown being the start
-//and final block of that section, inclusive on both
+//and final block of that section, inclusive on both.
+//
+//BITMAP_START is the inode bitmap, BITMAP_END is the user space block bitmap
 #define BITMAP_START 0
 #define BITMAP_END 1
 #define INODE_START (BITMAP_END + 1) // 2
@@ -40,6 +43,7 @@
 #define DENTRY_START (INODE_END + 1) // 6
 #define DENTRY_END (DENTRY_START + DENTRY_BLOCKS) - 1 // 6 + 64 - 1 = *69*
 #define USER_START (DENTRY_END + 1) // 70, note how it matches MAX_SETUP_BLOCKS
+#define USER_END (software_disk_size() - 1)
 
 //Update with caution, this value must keep Inode struct's size a multiple of 4096, which is the size of a block.
 #define NUM_DENTRIES_IN_INODE 13
@@ -59,6 +63,7 @@ enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
 
 //------------FUNCTION PROTOTYPES------------
 
+int find_empty_inode(void);
 void set_bit(BitmapBlock *bblock, int n);
 void clear_bit(BitmapBlock *bblock, int n);
 int get_bit(BitmapBlock *bblock, int n);
@@ -119,6 +124,40 @@ typedef struct _BitmapBlock {
 
 //------------SUPPORT FUNCTIONS------------
 
+/* Finds the first bit that is 0 in the inode bitmap before the # files max and returns its address.
+ * A return value of -1 means failure, which is caused by a 0 bit not being found.
+ */
+int find_empty_inode(void){
+	BitmapBlock inode_bits;
+	read_sd_block(inode_bits->map, BITMAP_START);
+	int i = 0;
+	while (get_bit(inode_bits, i)){
+		i++;
+		if(i == MAX_FILES_SUPPORTED){
+			i = -1;
+			break;
+		}
+	}
+	return i;
+}
+
+/* Finds the first bit that is 0 in the user blocks bitmap before the # user blocks allowed and returns its address.
+ * The address is given as the real block address on the software disk
+ * A return value of -1 means failure, which is caused by a 0 bit not being found.
+ */
+int find_empty_user_block(void){
+	BitmapBlock user_bits;
+	read_sd_block(user_bits->map, USER_START);
+	int i = 0;
+	while (get_bit(user_bits, i)){
+		i++;
+		if(i == NUM_USER_BLOCKS){
+			i = -1;
+			break;
+		}
+	}
+	return i + USER_START;
+}
 
 
 //------------BITMAP OPERATIONS------------
