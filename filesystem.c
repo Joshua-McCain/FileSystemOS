@@ -17,19 +17,38 @@
 #define MAX_FILENAME_SIZE 509
 
 /* These define statements are for determining how many blocks are allocated to inodes/dentries based on # files
- * permitted on the system. This is to avoid user space blocks overriding file system blocks.
+ * permitted on the system.
  *
- * MAX_FILESYS_BLOCKS is the cutoff for the amount of blocks used to support the file system.
- * ***IMPORTANT*** since the disk starts addressing at 0, max filesys blocks is actually the address of the first
+ * MAX_SETUP_BLOCKS is the cutoff for the amount of blocks used to support the file system.
+ * ***IMPORTANT*** since the disk starts addressing at 0, max setup blocks is actually the address of the first
  * block available for user input.
  */
-#define MAX_FILES_SUPPORTED 500
-#define INODE_BLOCKS ceil(MAX_FILES_SUPPORTED / (SOFTWARE_DISK_BLOCK_SIZE / sizeof(Inode)))
-#define DENTRY_BLOCKS ceil(MAX_FILES_SUPPORTED / (SOFTWARE_DISK_BLOCK_SIZE / sizeof(DirEntry)))
-#define MAX_FILESYS_BLOCKS (2 + INODE_BLOCKS + DENTRY_BLOCKS) // + 2 for the bitmap blocks
+#define MAX_FILES_SUPPORTED 512
+#define NUM_INODE_IN_BLOCK (SOFTWARE_DISK_BLOCK_SIZE / sizeof(Inode)) // 4096 / 32 = *128*
+#define NUM_DENTRY_IN_BLOCK (SOFTWARE_DISK_BLOCK_SIZE / sizeof(DirEntry)) // 4096 / 512 = *8*
+
+#define INODE_BLOCKS ceil(MAX_FILES_SUPPORTED / NUM_INODE_IN_BLOCK) // 512 / 128 = *4*
+#define DENTRY_BLOCKS ceil(MAX_FILES_SUPPORTED / NUM_DENTRY_IN_BLOCK) // 512 / 8 = *64*
+#define MAX_SETUP_BLOCKS (2 + INODE_BLOCKS + DENTRY_BLOCKS) // 70
+
+//The following values start from 0 blocks on the disk, with the values shown being the start
+//and final block of that section, inclusive on both
+#define BITMAP_START 0
+#define BITMAP_END 1
+#define INODE_START (BITMAP_END + 1) // 2
+#define INODE_END (INODE_START + INODE_BLOCKS) - 1 // 2 + 4 = *5*
+#define DENTRY_START (INODE_END + 1) // 6
+#define DENTRY_END (DENTRY_START + DENTRY_BLOCKS) - 1 // 6 + 64 - 1 = *69*
+#define USER_START (DENTRY_END + 1) // 70, note how it matches MAX_SETUP_BLOCKS
 
 //Update with caution, this value must keep Inode struct's size a multiple of 4096, which is the size of a block.
 #define NUM_DENTRIES_IN_INODE 13
+
+//Helper functions for finding the inode/dentry in memory given its bitmap "address"
+#define BLOCK_OF_INODE(b) (b / NUM_INODE_IN_BLOCK + INODE_START)
+#define ADDRESS_OF_INODE(b) (b % NUM_INODE_IN_BLOCK)
+#define BLOCK_OF_DENTRY(b) (b / NUM_DENTRY_IN_BLOCK + DENTRY_START)
+#define ADDRESS_OF_DENTRY(b) (b % NUM_DENTRY_IN_BLOCK)
 
 //Bitmap constants that are used in below functions. Credit for these constants found below in bitmaps functions sect.
 typedef uint32_t word_t;
@@ -62,7 +81,7 @@ typedef struct _DirEntry {
  * DirEntries. This block should hold 8 dentries if the size of 1 is 512 bytes.
  */
 typedef struct _DirEntryBlock {
-	DirEntry dentries[SOFTWARE_DISK_BLOCK_SIZE / sizeof(DirEntry)];
+	DirEntry dentries[NUM_DENTRY_IN_BLOCK];
 } DirEntryBlock;
 
 //Size of the inode is 32 bytes, important to keep 4096 divisible by the size
@@ -74,7 +93,7 @@ typedef struct _Inode {
 
 //This struct should be able to hold 128 inodes if the size of the inode stays at size 32 bytes.
 typedef struct _InodeBlock {
-	Inode inodes[SOFTWARE_DISK_BLOCK_SIZE / sizeof(Inode)];
+	Inode inodes[NUM_INODE_IN_BLOCK];
 } InodeBlock;
 
 /* When an inode references its indirect entry address, this block is what it will point to. It holds all the direct
@@ -94,6 +113,8 @@ typedef struct _BitmapBlock {
 
 
 //------------FILESYSTEM FUNCTIONS------------
+
+
 
 
 //------------SUPPORT FUNCTIONS------------
