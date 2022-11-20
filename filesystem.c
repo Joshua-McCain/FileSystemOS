@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <limits.h>
 #include "filesystem.h"
 #include "softwaredisk.h"
@@ -65,6 +66,7 @@ enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
 int find_empty_inode(BitmapBlock *bblock);
 void set_inode_bit(BitmapBlock *bblock, int n);
 int find_empty_user_block(void);
+int file_exists(char *name);
 void set_bit(BitmapBlock *bblock, int n);
 void clear_bit(BitmapBlock *bblock, int n);
 int get_bit(BitmapBlock *bblock, int n);
@@ -138,39 +140,37 @@ File open_file(char *name, FileMode mode){
 	fserror = FS_NONE;
 
 	BitmapBlock inode_bits;
-	read_sd_block(inode_bits->map, BITMAP_START);
+	read_sd_block(inode_bits.map, BITMAP_START);
 
 	//Find file of a specific name in the system
-	DirEntryBlock dentry_block;
-	int i = 0;
-	while (i < MAX_FILES_SUPPORTED){
-		//Aka, we hit a new block of dentries
-		if(ADDRESS_OF_DENTRY(i) == 0){
-			read_sd_block(dentry_block->dentries, BLOCK_OF_DENTRY(i));
-		}
+	int dentry_pos = file_exists(name);
 
-		//If the current position is occupied by a file with the name we are attempting to match
-		if(get_bit(&inode_bits, i) && strcmp(((dentry_block->dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
-			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
-			break;
-		}
-		else if(i == MAX_FILES_SUPPORTED){
-			fserror = FS_FILE_NOT_FOUND;
-			return NULL;
-		}
-		i++;
+	if(dentry_pos == -1){
+		fserror = FS_FILE_NOT_FOUND;
+		return NULL;
+	}
+	
+	//Get file from dentries and check if the file is already open
+	DirEntryBlock dentry_block;
+	read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
+	DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(dentry_pos)]);
+
+	if(new_dentry->file_open){
+		fserror = FS_FILE_OPEN;
+		return NULL;
 	}
 
-	//Check if the file is already open
-	
+	//Make open changes to the dentry and write to disk
+	new_dentry->file_open = 1;
+	write_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
 
-	//Make open changes to the dentry and File
+	//Make new File for the user and return
+	File ret_file;
+	ret_file->current_pos = 0;
+	strcpy(ret_file->file_name, name);
+	ret_file->mode = mode;
 
-
-	//Write dentry changes to disk
-
-	
-	//Return File
+	return ret_file;
 }
 
 
@@ -180,13 +180,19 @@ File create_file(char *name){
 	//Check for name being incorrect number of characters or begins with null
 	//The minus 1 is included to account for the null terminating character filling the last slot in the array
 	if(name[0] == '\0' || strlen(name) > MAX_FILENAME_SIZE - 1){
-			fserror = FS_ILLEGAL_FILENAME;
-			return NULL;
+		fserror = FS_ILLEGAL_FILENAME;
+		return NULL;
+	}
+
+	//Check if file already exists
+	if(file_exists(name) != -1){
+		fserror = FS_FILE_ALREADY_EXISTS;
+		return NULL;
 	}
 
 	//Initial reading of blocks
 	BitmapBlock inode_bits;
-	read_sd_block(inode_bits->map, BITMAP_START);
+	read_sd_block(inode_bits.map, BITMAP_START);
 
 	//Find empty to use
 	int inode_pos = find_empty_inode(&inode_bits);
@@ -195,25 +201,19 @@ File create_file(char *name){
 			return NULL;
 	}
 
-	//With empty address, update inode/dentry with necessary info
+	//With empty address, update dentry with its name, idx, and show the file slot as filled in the bitmap
 	set_inode_bit(&inode_bits, inode_pos);
 
-	/*
-	InodeBlock inode_block;
-	read_sd_block(inode_block->inodes, BLOCK_OF_INODE(inode_pos));
-	Inode* new_inode = &((inode_block->inodes)[ADDRESS_OF_INODE(inode_pos)]);
-	*/
-
 	DirEntryBlock dentry_block;
-	read_sd_block(dentry_block->dentries, BLOCK_OF_DENTRY(inode_pos));
-	DirEntry* new_dentry = &((dentry_block->dentries)[ADDRESS_OF_DENTRY(inode_pos)]);
+	read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(inode_pos));
+	DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(inode_pos)]);
 
+	strcpy(new_dentry->file_name, name);
+	//***IMPORTANT***, not sure if this compression of int to 16 bit will cause problems.
+	new_dentry->inode_idx = (uint16_t) inode_pos;
 
-	//Write new inode/dentry data to the software disk
-
-
-	//Update File return value with correct data (might be done in open file)
-
+	//Write new dentry data to the software disk
+	write_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(inode_pos));
 
 	//Call the open file method
 	File ret_file = open_file(name, READ_WRITE);
@@ -252,7 +252,7 @@ void set_inode_bit(BitmapBlock *bblock, int n){
  */
 int find_empty_user_block(void){
 	BitmapBlock user_bits;
-	read_sd_block(user_bits->map, BITMAP_END);
+	read_sd_block(user_bits.map, BITMAP_END);
 	int i = 0;
 	while (get_bit(user_bits, i)){
 		i++;
@@ -261,6 +261,36 @@ int find_empty_user_block(void){
 		}
 	}
 	return i + USER_START;
+}
+
+/* Finds if the software disk has a file with the name argument as its file name.
+ * Returns the bitmap address if it is found, -1 if not found.
+ */
+int file_exists(char *name){
+	BitmapBlock inode_bits;
+	read_sd_block(inode_bits.map, BITMAP_START);
+
+	DirEntryBlock dentry_block;
+	int i = 0;
+	while (i < MAX_FILES_SUPPORTED){
+		//Aka, we hit a new block of dentries
+		if(ADDRESS_OF_DENTRY(i) == 0){
+			read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(i));
+		}
+
+		//If the current position is occupied by a file with the name we are attempting to match
+		if(get_bit(&inode_bits, i) && strcmp(((dentry_block.dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
+			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
+			break;
+		}
+		i++
+	}
+
+	//File not found
+	if(i == MAX_FILES_SUPPORTED)
+		i = -1;
+	
+	return i;
 }
 
 
