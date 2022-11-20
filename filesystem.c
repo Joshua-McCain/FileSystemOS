@@ -134,19 +134,59 @@ FSError fserror;
 
 //------------FILESYSTEM FUNCTIONS------------
 
+File open_file(char *name, FileMode mode){
+	fserror = FS_NONE;
+
+	BitmapBlock inode_bits;
+	read_sd_block(inode_bits->map, BITMAP_START);
+
+	//Find file of a specific name in the system
+	DirEntryBlock dentry_block;
+	int i = 0;
+	while (i < MAX_FILES_SUPPORTED){
+		//Aka, we hit a new block of dentries
+		if(ADDRESS_OF_DENTRY(i) == 0){
+			read_sd_block(dentry_block->dentries, BLOCK_OF_DENTRY(i));
+		}
+
+		//If the current position is occupied by a file with the name we are attempting to match
+		if(get_bit(&inode_bits, i) && strcmp(((dentry_block->dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
+			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
+			break;
+		}
+		else if(i == MAX_FILES_SUPPORTED){
+			fserror = FS_FILE_NOT_FOUND;
+			return NULL;
+		}
+		i++;
+	}
+
+	//Check if the file is already open
+	
+
+	//Make open changes to the dentry and File
+
+
+	//Write dentry changes to disk
+
+	
+	//Return File
+}
 
 
 File create_file(char *name){
-
 	fserror = FS_NONE;
+
+	//Check for name being incorrect number of characters or begins with null
+	//The minus 1 is included to account for the null terminating character filling the last slot in the array
+	if(name[0] == '\0' || strlen(name) > MAX_FILENAME_SIZE - 1){
+			fserror = FS_ILLEGAL_FILENAME;
+			return NULL;
+	}
 
 	//Initial reading of blocks
 	BitmapBlock inode_bits;
 	read_sd_block(inode_bits->map, BITMAP_START);
-
-
-	//Check for name being incorrect number of characters or begins with null
-
 
 	//Find empty to use
 	int inode_pos = find_empty_inode(&inode_bits);
@@ -158,9 +198,11 @@ File create_file(char *name){
 	//With empty address, update inode/dentry with necessary info
 	set_inode_bit(&inode_bits, inode_pos);
 
+	/*
 	InodeBlock inode_block;
 	read_sd_block(inode_block->inodes, BLOCK_OF_INODE(inode_pos));
 	Inode* new_inode = &((inode_block->inodes)[ADDRESS_OF_INODE(inode_pos)]);
+	*/
 
 	DirEntryBlock dentry_block;
 	read_sd_block(dentry_block->dentries, BLOCK_OF_DENTRY(inode_pos));
@@ -174,9 +216,10 @@ File create_file(char *name){
 
 
 	//Call the open file method
-
+	File ret_file = open_file(name, READ_WRITE);
 
 	//Return the File
+	return ret_file;
 }
 
 
