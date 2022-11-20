@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <strings.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
@@ -63,7 +62,9 @@ enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
 
 //------------FUNCTION PROTOTYPES------------
 
-int find_empty_inode(void);
+int find_empty_inode(BitmapBlock *bblock);
+void set_inode_bit(BitmapBlock *bblock, int n);
+int find_empty_user_block(void);
 void set_bit(BitmapBlock *bblock, int n);
 void clear_bit(BitmapBlock *bblock, int n);
 int get_bit(BitmapBlock *bblock, int n);
@@ -116,9 +117,67 @@ typedef struct _BitmapBlock {
 	word_t map[SOFTWARE_DISK_BLOCK_SIZE / sizeof(word_t)];
 } BitmapBlock;
 
+/* Built to flesh out the File type of the filesystem.h file. This struct is returned to the user for easy
+ * access to their file in memory.
+ */
+struct FileInternals {
+	char file_name[MAX_FILENAME_SIZE];
+	int current_pos;
+	FileMode mode;
+};
+
+
+//------------GLOBALS------------
+
+FSError fserror;
+
 
 //------------FILESYSTEM FUNCTIONS------------
 
+
+
+File create_file(char *name){
+
+	fserror = FS_NONE;
+
+	//Initial reading of blocks
+	BitmapBlock inode_bits;
+	read_sd_block(inode_bits->map, BITMAP_START);
+
+
+	//Check for name being incorrect number of characters or begins with null
+
+
+	//Find empty to use
+	int inode_pos = find_empty_inode(&inode_bits);
+	if (inode_pos == -1){
+			fserror = FS_OUT_OF_SPACE;
+			return NULL;
+	}
+
+	//With empty address, update inode/dentry with necessary info
+	set_inode_bit(&inode_bits, inode_pos);
+
+	InodeBlock inode_block;
+	read_sd_block(inode_block->inodes, BLOCK_OF_INODE(inode_pos));
+	Inode* new_inode = &((inode_block->inodes)[ADDRESS_OF_INODE(inode_pos)]);
+
+	DirEntryBlock dentry_block;
+	read_sd_block(dentry_block->dentries, BLOCK_OF_DENTRY(inode_pos));
+	DirEntry* new_dentry = &((dentry_block->dentries)[ADDRESS_OF_DENTRY(inode_pos)]);
+
+
+	//Write new inode/dentry data to the software disk
+
+
+	//Update File return value with correct data (might be done in open file)
+
+
+	//Call the open file method
+
+
+	//Return the File
+}
 
 
 
@@ -127,11 +186,9 @@ typedef struct _BitmapBlock {
 /* Finds the first bit that is 0 in the inode bitmap before the # files max and returns its address.
  * A return value of -1 means failure, which is caused by a 0 bit not being found.
  */
-int find_empty_inode(void){
-	BitmapBlock inode_bits;
-	read_sd_block(inode_bits->map, BITMAP_START);
+int find_empty_inode(BitmapBlock *bblock){
 	int i = 0;
-	while (get_bit(inode_bits, i)){
+	while (get_bit(bblock, i)){
 		i++;
 		if(i == MAX_FILES_SUPPORTED){
 			i = -1;
@@ -141,19 +198,23 @@ int find_empty_inode(void){
 	return i;
 }
 
+void set_inode_bit(BitmapBlock *bblock, int n){
+	set_bit(bblock, n);
+	write_sd_block(bblock->map, BITMAP_START);
+}
+
 /* Finds the first bit that is 0 in the user blocks bitmap before the # user blocks allowed and returns its address.
  * The address is given as the real block address on the software disk
  * A return value of -1 means failure, which is caused by a 0 bit not being found.
  */
 int find_empty_user_block(void){
 	BitmapBlock user_bits;
-	read_sd_block(user_bits->map, USER_START);
+	read_sd_block(user_bits->map, BITMAP_END);
 	int i = 0;
 	while (get_bit(user_bits, i)){
 		i++;
 		if(i == NUM_USER_BLOCKS){
-			i = -1;
-			break;
+			return -1;
 		}
 	}
 	return i + USER_START;
