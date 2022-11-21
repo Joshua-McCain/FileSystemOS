@@ -129,18 +129,10 @@ struct FileInternals {
 };
 
 
-//------------GLOBALS------------
-
-FSError fserror;
-
-
 //------------FILESYSTEM FUNCTIONS------------
 
 File open_file(char *name, FileMode mode){
 	fserror = FS_NONE;
-
-	BitmapBlock inode_bits;
-	read_sd_block(inode_bits.map, BITMAP_START);
 
 	//Find file of a specific name in the system
 	int dentry_pos = find_file(name);
@@ -237,11 +229,32 @@ void close_file(File file){
 
 		if(new_dentry->file_open){
 			new_dentry->file_open = 0;
+			write_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
 		}
 		else{
 			fserror = FS_FILE_NOT_OPEN;
 		}
 	}
+}
+
+unsigned long read_file(File file, void *buf, unsigned long numbytes){
+
+}
+
+unsigned long write_file(File file, void *buf, unsigned long numbytes){
+
+}
+
+int seek_file(File file, unsigned long bytepos){
+
+}
+
+unsigned long file_length(File file){
+
+}
+
+int delete_file(char *name){
+
 }
 
 /* Similar to the support function find_file, except, instead of returning the address of the dentry,
@@ -273,6 +286,14 @@ int file_exists(char *name){
 	}
 	
 	return file_found;
+}
+
+void fs_print_error(void){
+
+}
+
+int check_structure_alignment(void){
+
 }
 
 //------------SUPPORT FUNCTIONS------------
