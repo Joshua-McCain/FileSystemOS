@@ -185,7 +185,7 @@ File create_file(char *name){
 	}
 
 	//Check if file already exists
-	if(find_file(name) != -1){
+	if(file_exists(name)){
 		fserror = FS_FILE_ALREADY_EXISTS;
 		return NULL;
 	}
@@ -222,6 +222,28 @@ File create_file(char *name){
 	return ret_file;
 }
 
+void close_file(File file){
+	fserror = FS_NONE;
+
+	int dentry_pos = find_file(file->file_name);
+
+	if(dentry_pos == -1){
+		fserror = FS_FILE_NOT_FOUND;
+	}
+	else{
+		DirEntryBlock dentry_block;
+		read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
+		DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(dentry_pos)]);
+
+		if(new_dentry->file_open){
+			new_dentry->file_open = 0;
+		}
+		else{
+			fserror = FS_FILE_NOT_OPEN;
+		}
+	}
+}
+
 /* Similar to the support function find_file, except, instead of returning the address of the dentry,
  * This will return 1 if it exits and 0 if not.
  * Function is mostly here for program3 completion purposes.
@@ -232,6 +254,7 @@ int file_exists(char *name){
 
 	DirEntryBlock dentry_block;
 	int i = 0;
+	fserror = FS_FILE_NOT_FOUND;
 	int file_found = 0;
 	while (i < MAX_FILES_SUPPORTED){
 		//Aka, we hit a new block of dentries
@@ -242,6 +265,7 @@ int file_exists(char *name){
 		//If the current position is occupied by a file with the name we are attempting to match
 		if(get_bit(&inode_bits, i) && strcmp(((dentry_block.dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
 			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
+			fserror = FS_NONE;
 			file_found = 1;
 			break;
 		}
