@@ -66,7 +66,7 @@ enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
 int find_empty_inode(BitmapBlock *bblock);
 void set_inode_bit(BitmapBlock *bblock, int n);
 int find_empty_user_block(void);
-int file_exists(char *name);
+int find_file(char *name);
 void set_bit(BitmapBlock *bblock, int n);
 void clear_bit(BitmapBlock *bblock, int n);
 int get_bit(BitmapBlock *bblock, int n);
@@ -143,7 +143,7 @@ File open_file(char *name, FileMode mode){
 	read_sd_block(inode_bits.map, BITMAP_START);
 
 	//Find file of a specific name in the system
-	int dentry_pos = file_exists(name);
+	int dentry_pos = find_file(name);
 
 	if(dentry_pos == -1){
 		fserror = FS_FILE_NOT_FOUND;
@@ -185,7 +185,7 @@ File create_file(char *name){
 	}
 
 	//Check if file already exists
-	if(file_exists(name) != -1){
+	if(find_file(name) != -1){
 		fserror = FS_FILE_ALREADY_EXISTS;
 		return NULL;
 	}
@@ -222,7 +222,34 @@ File create_file(char *name){
 	return ret_file;
 }
 
+/* Similar to the support function find_file, except, instead of returning the address of the dentry,
+ * This will return 1 if it exits and 0 if not.
+ * Function is mostly here for program3 completion purposes.
+ */
+int file_exists(char *name){
+	BitmapBlock inode_bits;
+	read_sd_block(inode_bits.map, BITMAP_START);
 
+	DirEntryBlock dentry_block;
+	int i = 0;
+	int file_found = 0;
+	while (i < MAX_FILES_SUPPORTED){
+		//Aka, we hit a new block of dentries
+		if(ADDRESS_OF_DENTRY(i) == 0){
+			read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(i));
+		}
+
+		//If the current position is occupied by a file with the name we are attempting to match
+		if(get_bit(&inode_bits, i) && strcmp(((dentry_block.dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
+			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
+			file_found = 1;
+			break;
+		}
+		i++
+	}
+	
+	return file_found;
+}
 
 //------------SUPPORT FUNCTIONS------------
 
@@ -266,7 +293,7 @@ int find_empty_user_block(void){
 /* Finds if the software disk has a file with the name argument as its file name.
  * Returns the bitmap address if it is found, -1 if not found.
  */
-int file_exists(char *name){
+int find_file(char *name){
 	BitmapBlock inode_bits;
 	read_sd_block(inode_bits.map, BITMAP_START);
 
