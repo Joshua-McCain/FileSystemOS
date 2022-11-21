@@ -65,6 +65,8 @@ enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
 
 int find_empty_inode(BitmapBlock *bblock);
 void set_inode_bit(BitmapBlock *bblock, int n);
+void write_dentry_to_disk(File file);
+void write_inode_to_disk(File file);
 int find_empty_user_block(void);
 int find_file(char *name);
 void set_bit(BitmapBlock *bblock, int n);
@@ -126,6 +128,8 @@ struct FileInternals {
 	char file_name[MAX_FILENAME_SIZE];
 	int current_pos;
 	FileMode mode;
+	Inode inode;
+	DirEntry dentry;
 };
 
 
@@ -142,10 +146,14 @@ File open_file(char *name, FileMode mode){
 		return NULL;
 	}
 	
-	//Get file from dentries and check if the file is already open
+	//Get dentries/inode and check if the file is already open
 	DirEntryBlock dentry_block;
 	read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
 	DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(dentry_pos)]);
+
+	InodeBlock inode_block;
+	read_sd_block(inode_block.inodes, BLOCK_OF_INODE(new_dentry->inode_idx));
+	Inode* new_inode = &((inode_block.inodes)[ADDRESS_OF_INODE(new_dentry->inode_idx)]);
 
 	if(new_dentry->file_open){
 		fserror = FS_FILE_OPEN;
@@ -161,6 +169,8 @@ File open_file(char *name, FileMode mode){
 	ret_file->current_pos = 0;
 	strcpy(ret_file->file_name, name);
 	ret_file->mode = mode;
+	memcpy(&(ret_file->inode), new_inode, sizeof(Inode));
+	memcpy(&(ret_file->dentry), new_dentry, sizeof(DirEntry));
 
 	return ret_file;
 }
@@ -217,23 +227,18 @@ File create_file(char *name){
 void close_file(File file){
 	fserror = FS_NONE;
 
-	int dentry_pos = find_file(file->file_name);
+	if(file_exists(file->file_name)){
 
-	if(dentry_pos == -1){
-		fserror = FS_FILE_NOT_FOUND;
-	}
-	else{
-		DirEntryBlock dentry_block;
-		read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
-		DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(dentry_pos)]);
-
-		if(new_dentry->file_open){
-			new_dentry->file_open = 0;
-			write_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
+		if((file->dentry).file_open){
+			(file->dentry).file_open = 0;
+			write_dentry_to_disk(file);
 		}
 		else{
 			fserror = FS_FILE_NOT_OPEN;
 		}
+	}
+	else{
+		fserror = FS_FILE_NOT_FOUND;
 	}
 }
 
@@ -316,6 +321,28 @@ int find_empty_inode(BitmapBlock *bblock){
 void set_inode_bit(BitmapBlock *bblock, int n){
 	set_bit(bblock, n);
 	write_sd_block(bblock->map, BITMAP_START);
+}
+
+/* The next functions are meant to take the dentry or the inode inside a File and write it to the disk
+ */
+void write_dentry_to_disk(File file){
+	DirEntryBlock dentry_block;
+	read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY((file->dentry).inode_idx));
+	DirEntry* write_to_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY((file->dentry).inode_idx)]);
+	
+	memcpy(write_to_dentry, &(file->dentry), sizeof(DirEntry));
+
+	write_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY((file->dentry).inode_idx));
+}
+
+void write_inode_to_disk(File file){
+	InodeBlock inode_block;
+	read_sd_block(inode_block.inodes, BLOCK_OF_INODE((file->dentry).inode_idx));
+	Inode* write_to_inode = &((inode_block.inodes)[ADDRESS_OF_INODE((file->dentry).inode_idx)]);
+	
+	memcpy(write_to_inode, &(file->inode), sizeof(Inode));
+
+	write_sd_block(inode_block.inodes, BLOCK_OF_INODE((file->dentry).inode_idx));
 }
 
 /* Finds the first bit that is 0 in the user blocks bitmap before the # user blocks allowed and returns its address.
