@@ -269,9 +269,20 @@ int delete_file(char *name){
 
 
     // Perhaps very broken
+    int dentry_pos = find_file(name);
 
 
+    //dir_blocks contain data
     //Clearing out data
+    DirEntryBlock dentry_block;
+    read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
+    DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(dentry_pos)]);
+
+    bzero(new_dentry,sizeof(new_dentry));
+    memcpy(&(ret_file->dentry), new_dentry, sizeof(DirEntry));
+
+
+
     char zeroData buffer[sizeOf(dentry_block.dentries)] = {0};
     write_sd_block(zeroData, BLOCK_OF_DENTRY((file->dentry).inode_idx));
 
@@ -286,6 +297,10 @@ int delete_file(char *name){
     bzero(&(file->dentry),sizeof(DirEntry));
 
     //Clearing the inode bitmap
+    //broken!! use clear_bit of bitmap
+    //read in bitmap (inode block, dentry block using dentry_pos) beforehand
+    //go through every memory addr in inode set to something (the stuff user wrote) and set to 0
+
     set_bit(inode_bits.map, 0);
 
 
