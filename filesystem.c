@@ -121,6 +121,13 @@ typedef struct _BitmapBlock {
 	word_t map[SOFTWARE_DISK_BLOCK_SIZE / sizeof(word_t)];
 } BitmapBlock;
 
+/* This block is for continuity purposes so we know what a user data block looks like in human readable terms.
+ * The page consists of chars going up to the block size since 1 char = 1 byte.
+ */
+typedef struct _UserDataBlock {
+	char page[SOFTWARE_DISK_BLOCK_SIZE];
+} UserDataBlock;
+
 /* Built to flesh out the File type of the filesystem.h file. This struct is returned to the user for easy
  * access to their file in memory.
  */
@@ -247,6 +254,18 @@ unsigned long read_file(File file, void *buf, unsigned long numbytes){
 }
 
 unsigned long write_file(File file, void *buf, unsigned long numbytes){
+
+	//Test for things that would not allow us to write
+	if(!((file->dentry).file_open)){
+		fserror = FS_FILE_NOT_OPEN;
+		return 0;
+	}
+	
+	if(file->mode == READ_ONLY){
+		fserror = FS_FILE_READ_ONLY;
+		return 0;
+	}
+
 
 }
 
