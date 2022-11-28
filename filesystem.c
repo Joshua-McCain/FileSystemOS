@@ -278,6 +278,35 @@ unsigned long file_length(File file){
 }
 
 int delete_file(char *name){
+    //(data) -> inode -> dir entry -> inode bitmap
+
+    //Check to make sure the file exists
+    if(!file_exists(name)){
+        fserror = FS_FILE_NOT_FOUND;
+        return NULL;
+    }
+
+
+    // Perhaps very broken
+
+
+    //Clearing out data
+    char zeroData buffer[sizeOf(dentry_block.dentries)] = {0};
+    write_sd_block(zeroData, BLOCK_OF_DENTRY((file->dentry).inode_idx));
+
+    //Clearing the block
+    bzero(BLOCK_OF_DENTRY((file->dentry).inode_idx),sizeof(BLOCK_OF_DENTRY((file->dentry).inode_idx)));
+
+    //Clearing the inode
+    char zeroInode buffer[sizeOf(inode_block.inodes)] = {0};
+    write_sd_block(zeroInode, BLOCK_OF_INODE((file->dentry).inode_idx));
+
+    //Clearing the dir entry
+    bzero(&(file->dentry),sizeof(DirEntry));
+
+    //Clearing the inode bitmap
+    set_bit(inode_bits.map, 0);
+
 
 }
 
