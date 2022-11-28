@@ -54,6 +54,9 @@
 #define BLOCK_OF_DENTRY(b) (b / NUM_DENTRY_IN_BLOCK + DENTRY_START)
 #define ADDRESS_OF_DENTRY(b) (b % NUM_DENTRY_IN_BLOCK)
 
+#define DIRECT_ENTRY_INODE_ADDRESS(b) (b / SOFTWARE_DISK_BLOCK_SIZE)
+#define DIRECT_ENTRY_INODE_WRITEPOS(b) (b % SOFTWARE_DISK_BLOCK_SIZE)
+
 //Bitmap constants that are used in below functions. Credit for these constants found below in bitmaps functions sect.
 typedef uint32_t word_t;
 enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
@@ -266,7 +269,21 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 		return 0;
 	}
 
+	char *new_buf = (char *) buf;
 
+	//Using the current file position, find the memory block in the inode we must write to
+	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) <= NUM_DENTRIES_IN_INODE){
+		
+	}
+	else{ //Otherwise it is in the indir entry block
+
+	}
+
+	for(int i = 0; i < numbytes; i++){
+
+	}
+
+	return 0;
 }
 
 int seek_file(File file, unsigned long bytepos){
@@ -278,7 +295,7 @@ unsigned long file_length(File file){
 }
 
 int delete_file(char *name){
-    //(data) -> inode -> dir entry -> inode bitmap
+	//(data) -> inode -> dir entry -> inode bitmap
 
     //Check to make sure the file exists
     if(!file_exists(name)){
@@ -306,8 +323,6 @@ int delete_file(char *name){
 
     //Clearing the inode bitmap
     set_bit(inode_bits.map, 0);
-
-
 }
 
 /* Similar to the support function find_file, except, instead of returning the address of the dentry,
