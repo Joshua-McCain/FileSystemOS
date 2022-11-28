@@ -54,6 +54,9 @@
 #define BLOCK_OF_DENTRY(b) (b / NUM_DENTRY_IN_BLOCK + DENTRY_START)
 #define ADDRESS_OF_DENTRY(b) (b % NUM_DENTRY_IN_BLOCK)
 
+#define DIRECT_ENTRY_INODE_ADDRESS(b) (b / SOFTWARE_DISK_BLOCK_SIZE)
+#define DIRECT_ENTRY_INODE_WRITEPOS(b) (b % SOFTWARE_DISK_BLOCK_SIZE)
+
 //Bitmap constants that are used in below functions. Credit for these constants found below in bitmaps functions sect.
 typedef uint32_t word_t;
 enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
@@ -65,9 +68,12 @@ enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
 
 int find_empty_inode(BitmapBlock *bblock);
 void set_inode_bit(BitmapBlock *bblock, int n);
+void clear_inode_bit(BitmapBlock *bblock, int n);
 void write_dentry_to_disk(File file);
 void write_inode_to_disk(File file);
 int find_empty_user_block(void);
+void set_user_bit(BitmapBlock *bblock, int n);
+void clear_user_bit(BitmapBlock *bblock, int n);
 int find_file(char *name);
 void set_bit(BitmapBlock *bblock, int n);
 void clear_bit(BitmapBlock *bblock, int n);
@@ -120,6 +126,13 @@ typedef struct _IndirEntryBlock {
 typedef struct _BitmapBlock {
 	word_t map[SOFTWARE_DISK_BLOCK_SIZE / sizeof(word_t)];
 } BitmapBlock;
+
+/* This block is for continuity purposes so we know what a user data block looks like in human readable terms.
+ * The page consists of chars going up to the block size since 1 char = 1 byte.
+ */
+typedef struct _UserDataBlock {
+	char page[SOFTWARE_DISK_BLOCK_SIZE];
+} UserDataBlock;
 
 /* Built to flesh out the File type of the filesystem.h file. This struct is returned to the user for easy
  * access to their file in memory.
@@ -248,6 +261,44 @@ unsigned long read_file(File file, void *buf, unsigned long numbytes){
 
 unsigned long write_file(File file, void *buf, unsigned long numbytes){
 
+	//Test for things that would not allow us to write
+	if(!((file->dentry).file_open)){
+		fserror = FS_FILE_NOT_OPEN;
+		return 0;
+	}
+	
+	if(file->mode == READ_ONLY){
+		fserror = FS_FILE_READ_ONLY;
+		return 0;
+	}
+
+	char *new_buf = (char *) buf;
+
+	//Using the current file position, find the memory block in the inode we must write to
+	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) <= NUM_DENTRIES_IN_INODE){
+
+		if(((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] == 0){ //if no address
+			int block_address = find_empty_user_block();
+			if(block_address == -1){
+				fserror = FS_OUT_OF_SPACE;
+				return 0;
+			}
+			else{
+				((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] = block_address;
+			}
+		}
+
+	}
+	else{ //Otherwise it is in the indir entry block
+
+	}
+
+	//Start writing
+	for(int i = 0; i < numbytes; i++){
+
+	}
+
+	return 0;
 }
 
 int seek_file(File file, unsigned long bytepos){
@@ -259,7 +310,7 @@ unsigned long file_length(File file){
 }
 
 int delete_file(char *name){
-    //(data) -> inode -> dir entry -> inode bitmap
+	//(data) -> inode -> dir entry -> inode bitmap
 
     //Check to make sure the file exists
     if(!file_exists(name)){
@@ -302,8 +353,6 @@ int delete_file(char *name){
     //go through every memory addr in inode set to something (the stuff user wrote) and set to 0
 
     set_bit(inode_bits.map, 0);
-
-
 }
 
 /* Similar to the support function find_file, except, instead of returning the address of the dentry,
@@ -367,6 +416,11 @@ void set_inode_bit(BitmapBlock *bblock, int n){
 	write_sd_block(bblock->map, BITMAP_START);
 }
 
+void clear_inode_bit(BitmapBlock *bblock, int n){
+	clear_bit(bblock, n);
+	write_sd_block(bblock->map, BITMAP_START);
+}
+
 /* The next functions are meant to take the dentry or the inode inside a File and write it to the disk
  */
 void write_dentry_to_disk(File file){
@@ -392,6 +446,8 @@ void write_inode_to_disk(File file){
 /* Finds the first bit that is 0 in the user blocks bitmap before the # user blocks allowed and returns its address.
  * The address is given as the real block address on the software disk
  * A return value of -1 means failure, which is caused by a 0 bit not being found.
+ * If the function does not fail, it zeros the user block that is about to be used
+ * and sets the bit in bitmap to 1 (in use)
  */
 int find_empty_user_block(void){
 	BitmapBlock user_bits;
@@ -403,7 +459,25 @@ int find_empty_user_block(void){
 			return -1;
 		}
 	}
+
+	//Clear the user space so we know it is clear (easier to do here than in delete_file)
+	UserDataBlock user_block;
+	bzero(user_block.page, sizeof(user_block.page));
+	write_sd_block(user_block.page, i + USER_START);
+
+	set_user_bit(&user_bits, i);
+
 	return i + USER_START;
+}
+
+void set_user_bit(BitmapBlock *bblock, int n){
+	set_bit(bblock, n);
+	write_sd_block(bblock->map, BITMAP_END);
+}
+
+void clear_user_bit(BitmapBlock *bblock, int n){
+	clear_bit(bblock, n);
+	write_sd_block(bblock->map, BITMAP_END);
 }
 
 /* Finds if the software disk has a file with the name argument as its file name.
