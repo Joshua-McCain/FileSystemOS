@@ -68,9 +68,12 @@ enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
 
 int find_empty_inode(BitmapBlock *bblock);
 void set_inode_bit(BitmapBlock *bblock, int n);
+void clear_inode_bit(BitmapBlock *bblock, int n);
 void write_dentry_to_disk(File file);
 void write_inode_to_disk(File file);
 int find_empty_user_block(void);
+void set_user_bit(BitmapBlock *bblock, int n);
+void clear_user_bit(BitmapBlock *bblock, int n);
 int find_file(char *name);
 void set_bit(BitmapBlock *bblock, int n);
 void clear_bit(BitmapBlock *bblock, int n);
@@ -273,9 +276,18 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 
 	//Using the current file position, find the memory block in the inode we must write to
 	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) <= NUM_DENTRIES_IN_INODE){
-		if(((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] == 0){ //if no address
 
+		if(((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] == 0){ //if no address
+			int block_address = find_empty_user_block();
+			if(block_address == -1){
+				fserror = FS_OUT_OF_SPACE;
+				return 0;
+			}
+			else{
+				((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] = block_address;
+			}
 		}
+
 	}
 	else{ //Otherwise it is in the indir entry block
 
@@ -419,6 +431,8 @@ void write_inode_to_disk(File file){
 /* Finds the first bit that is 0 in the user blocks bitmap before the # user blocks allowed and returns its address.
  * The address is given as the real block address on the software disk
  * A return value of -1 means failure, which is caused by a 0 bit not being found.
+ * If the function does not fail, it zeros the user block that is about to be used
+ * and sets the bit in bitmap to 1 (in use)
  */
 int find_empty_user_block(void){
 	BitmapBlock user_bits;
@@ -436,8 +450,19 @@ int find_empty_user_block(void){
 	bzero(user_block.page, sizeof(user_block.page));
 	write_sd_block(user_block.page, i + USER_START);
 
+	set_user_bit(&user_bits, i);
 
 	return i + USER_START;
+}
+
+void set_user_bit(BitmapBlock *bblock, int n){
+	set_bit(bblock, n);
+	write_sd_block(bblock->map, BITMAP_END);
+}
+
+void clear_user_bit(BitmapBlock *bblock, int n){
+	clear_bit(bblock, n);
+	write_sd_block(bblock->map, BITMAP_END);
 }
 
 /* Finds if the software disk has a file with the name argument as its file name.
