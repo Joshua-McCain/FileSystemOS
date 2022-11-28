@@ -386,6 +386,11 @@ void set_inode_bit(BitmapBlock *bblock, int n){
 	write_sd_block(bblock->map, BITMAP_START);
 }
 
+void clear_inode_bit(BitmapBlock *bblock, int n){
+	clear_bit(bblock, n);
+	write_sd_block(bblock->map, BITMAP_START);
+}
+
 /* The next functions are meant to take the dentry or the inode inside a File and write it to the disk
  */
 void write_dentry_to_disk(File file){
