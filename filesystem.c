@@ -273,12 +273,15 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 
 	//Using the current file position, find the memory block in the inode we must write to
 	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) <= NUM_DENTRIES_IN_INODE){
-		
+		if(((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] == 0){ //if no address
+
+		}
 	}
 	else{ //Otherwise it is in the indir entry block
 
 	}
 
+	//Start writing
 	for(int i = 0; i < numbytes; i++){
 
 	}
@@ -427,6 +430,13 @@ int find_empty_user_block(void){
 			return -1;
 		}
 	}
+
+	//Clear the user space so we know it is clear (easier to do here than in delete_file)
+	UserDataBlock user_block;
+	bzero(user_block.page, sizeof(user_block.page));
+	write_sd_block(user_block.page, i + USER_START);
+
+
 	return i + USER_START;
 }
 
