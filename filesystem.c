@@ -526,6 +526,18 @@ void fs_print_error(void){
 }
 
 int check_structure_alignment(void){
+    printf("Expecting sizeof(Inode) = 32, actual = %lu\n",sizeof(Inode));
+    printf("Expecting sizeof(IndirectBlock) = %d, actual %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(IndirectBlock));
+    printf("Expecting sizeof(InodeBlock) = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(InodeBlock));
+    printf("Expecting sizeof(DirEntry) = 512, actual = %lu\n", sizeof(DirEntry));
+    printf("Expecting sizeof(DirEntryBlock) = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(DirEntryBlock));
+    printf("Expecting sizeof(FreeBitmap) = %d, actual = %lu\n", SOFTWARE_DISK_BLOCK_SIZE, sizeof(FreeBitmap));
+
+    if(sizeof(Inode) != 32 || sizeof(IndirectBlock) != SOFTWARE_DISK_BLOCK_SIZE || sizeof(InodeBlock) != SOFTWARE_DISK_BLOCK_SIZE || sizeof(DirEntry) != 512 || sizeof(DirEntryBlock) != SOFTWARE_DISK_BLOCK_SIZE || sizeof(FreeBitmap) != SOFTWARE_DISK_BLOCK_SIZE)){
+        return 0;
+    } else {
+        return 1;
+    }
 
 }
 
