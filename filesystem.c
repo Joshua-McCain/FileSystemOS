@@ -278,8 +278,30 @@ unsigned long read_file(File file, void *buf, unsigned long numbytes){
 
 	for(int i = 0; i < numbytes; i++){
 		
-	}
+		//Take into account running out of page space, aka we have moved to a new page here
+		if((file->current_pos) % SOFTWARE_DISK_BLOCK_SIZE == 0){
 
+			//Make sure we don't go over the space allocated for file use, similar to seek file check
+			if(file->current_pos >= (MAX_NUM_DENTRY_IN_INODE * SOFTWARE_DISK_BLOCK_SIZE)){
+				//Update maximum file position
+				if(file->current_pos > (file->inode).file_size){
+					(file->inode).file_size = file->current_pos;
+					write_inode_to_disk(file);
+				}
+
+				fserror = FS_EXCEEDS_MAX_FILE_SIZE;
+				return i;
+			}
+
+			cur_address = update_to_cur_user_block(file, &user_block, &indir_block);
+		}
+
+		//Read the character in position
+		((char *) buf)[i] = (user_block.page)[(file->current_pos) % SOFTWARE_DISK_BLOCK_SIZE];
+
+		//Increment reading position
+		file->current_pos += 1;
+	}
 }
 
 unsigned long write_file(File file, void *buf, unsigned long numbytes){
@@ -714,19 +736,44 @@ int give_inode_new_address(File file){
 
 /* Takes in the current File with pointers to predefined user data block and indir entry block.
  * Updates the values inside user data block and indir entry block to be reflection of the disk.
+ * In the case that the position does not have an address (it is 0), an array of 0s is returned in the user block
+ *
  * Returns the address of the user block being worked on in disk so it can be written to later.
  */
 uint16_t update_to_cur_user_block(File file, UserDataBlock *user_block, IndirEntryBlock *indir_block){
 	
 	uint16_t cur_address;
+	//***IMPORTANT*** not sure if this is what he means by a clear array of chars to read from
+	memset(indir_block->dir_blocks, 0, SOFTWARE_DISK_BLOCK_SIZE / sizeof(uint16_t));
+
 	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) < NUM_DENTRIES_IN_INODE){
+
 		cur_address = ((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)];
-		read_sd_block(user_block->page, cur_address);
+		if(cur_address != 0){
+			read_sd_block(user_block->page, cur_address);
+		}
+		else{
+			//***IMPORTANT*** not sure if this is what he means by a clear array of chars to read from
+			memset(user_block->page, 0, SOFTWARE_DISK_BLOCK_SIZE);
+		}
 	}
 	else{
-		read_sd_block(indir_block->dir_blocks, ((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE]);
-		cur_address = (indir_block->dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) - NUM_DENTRIES_IN_INODE];
-		read_sd_block(user_block->page, cur_address);
+		if(((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE] != 0){
+			read_sd_block(indir_block->dir_blocks, ((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE]);
+
+			cur_address = (indir_block->dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) - NUM_DENTRIES_IN_INODE];
+			if(cur_address != 0){
+				read_sd_block(user_block->page, cur_address);
+			}
+			else{
+				//***IMPORTANT*** not sure if this is what he means by a clear array of chars to read from
+				memset(user_block->page, 0, SOFTWARE_DISK_BLOCK_SIZE);
+			}
+		}
+		else{
+			//***IMPORTANT*** not sure if this is what he means by a clear array of chars to read from
+			memset(user_block->page, 0, SOFTWARE_DISK_BLOCK_SIZE);
+		}
 	}
 
 	return cur_address;
