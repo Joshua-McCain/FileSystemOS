@@ -532,7 +532,7 @@ int file_exists(char *name){
 		}
 
 		//If the current position is occupied by a file with the name we are attempting to match
-		if(get_bit(&inode_bits, i) && strcmp(((dentry_block.dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
+		if(get_bit(&inode_bits, i) && !strcmp(((dentry_block.dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
 			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
 			fserror = FS_NONE;
 			file_found = 1;
@@ -692,12 +692,10 @@ int find_file(char *name){
 	while (i < MAX_FILES_SUPPORTED){
 		//Aka, we hit a new block of dentries
 		if(ADDRESS_OF_DENTRY(i) == 0){
-
 			read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(i));
 		}
-
 		//If the current position is occupied by a file with the name we are attempting to match
-		if(get_bit(&inode_bits, i) && strcmp(((dentry_block.dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
+		if(get_bit(&inode_bits, i) && !strcmp(((dentry_block.dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
 			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
 			break;
 		}
