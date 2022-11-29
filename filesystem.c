@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 #include "filesystem.h"
 #include "softwaredisk.h"
 
@@ -65,23 +66,13 @@ enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
 #define WORD_OFFSET(b) ((b) / BITS_PER_WORD)
 #define BIT_OFFSET(b) ((b) % BITS_PER_WORD)
 
-
-//------------FUNCTION PROTOTYPES------------
-
-int find_empty_inode(BitmapBlock *bblock);
-void set_inode_bit(BitmapBlock *bblock, int n);
-void clear_inode_bit(BitmapBlock *bblock, int n);
-void write_dentry_to_disk(File file);
-void write_inode_to_disk(File file);
-int find_empty_user_block(void);
-void set_user_bit(BitmapBlock *bblock, int n);
-void clear_user_bit(BitmapBlock *bblock, int n);
-int find_file(char *name);
-int give_inode_new_address(File file);
-uint16_t update_to_cur_user_block(File file, UserDataBlock *user_block, IndirEntryBlock *indir_block);
-void set_bit(BitmapBlock *bblock, int n);
-void clear_bit(BitmapBlock *bblock, int n);
-int get_bit(BitmapBlock *bblock, int n);
+/* Holds the structure for the two bitmaps we need for the filesystem, 1 keeping blocks used and another
+ * inodes/dir entries used, since both inodes and dir entries map to each other 1 to 1
+ * Bitmap functions are defined below to help with operations on the map.
+ */
+typedef struct _BitmapBlock {
+    word_t map[SOFTWARE_DISK_BLOCK_SIZE / sizeof(word_t)];
+} BitmapBlock;
 
 
 //------------STRUCTURES------------
@@ -123,13 +114,7 @@ typedef struct _IndirEntryBlock {
 	uint16_t dir_blocks[SOFTWARE_DISK_BLOCK_SIZE / sizeof(uint16_t)];
 } IndirEntryBlock;
 
-/* Holds the structure for the two bitmaps we need for the filesystem, 1 keeping blocks used and another
- * inodes/dir entries used, since both inodes and dir entries map to each other 1 to 1
- * Bitmap functions are defined below to help with operations on the map.
- */
-typedef struct _BitmapBlock {
-	word_t map[SOFTWARE_DISK_BLOCK_SIZE / sizeof(word_t)];
-} BitmapBlock;
+
 
 /* This block is for continuity purposes so we know what a user data block looks like in human readable terms.
  * The page consists of chars going up to the block size since 1 char = 1 byte.
@@ -148,6 +133,26 @@ struct FileInternals {
 	Inode inode;
 	DirEntry dentry;
 };
+
+
+//------------FUNCTION PROTOTYPES------------
+
+int find_empty_inode(BitmapBlock *bblock);
+void set_inode_bit(BitmapBlock *bblock, int n);
+void clear_inode_bit(BitmapBlock *bblock, int n);
+void write_dentry_to_disk(File file);
+void write_inode_to_disk(File file);
+int find_empty_user_block(void);
+void set_user_bit(BitmapBlock *bblock, int n);
+void clear_user_bit(BitmapBlock *bblock, int n);
+int find_file(char *name);
+int give_inode_new_address(File file);
+uint16_t update_to_cur_user_block(File file, UserDataBlock *user_block, IndirEntryBlock *indir_block);
+void set_bit(BitmapBlock *bblock, int n);
+void clear_bit(BitmapBlock *bblock, int n);
+int get_bit(BitmapBlock *bblock, int n);
+
+
 
 
 //------------FILESYSTEM FUNCTIONS------------
@@ -407,7 +412,7 @@ unsigned long file_length(File file){
 	return (file->inode).file_size;
 }
 
-int delete_file(char *name){
+/*int delete_file(char *name){
 	//(data) -> inode -> dir entry -> inode bitmap
 
     //Check to make sure the file exists
@@ -423,6 +428,8 @@ int delete_file(char *name){
 
     //dir_blocks contain data
     //Clearing out data
+
+    File ret_file;
     int dentry_pos = find_file(name);
 
     DirEntryBlock dentry_block;
@@ -480,7 +487,7 @@ int delete_file(char *name){
     //go through every memory addr in inode set to something (the stuff user wrote) and set to 0
 
     set_bit(inode_bits.map, 0);
-}
+}/*
 
 /* Similar to the support function find_file, except, instead of returning the address of the dentry,
  * This will return 1 if it exits and 0 if not.

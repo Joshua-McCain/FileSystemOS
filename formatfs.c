@@ -1,5 +1,6 @@
 #include "softwaredisk.h"
 #include <stdio.h>
+#include "filesystem.h"
 
 int main(int argc, char *argv[]) {
     if (! check_structure_alignment()) {
