@@ -260,6 +260,25 @@ void close_file(File file){
 }
 
 unsigned long read_file(File file, void *buf, unsigned long numbytes){
+	
+	if(!((file->dentry).file_open)){
+		fserror = FS_FILE_NOT_OPEN;
+		return 0;
+	}
+
+	if(!file_exists(file->file_name)){
+		fserror = FS_FILE_NOT_FOUND;
+		return 0;
+	}
+
+	//Get initial user block to use
+	UserDataBlock user_block;
+	IndirEntryBlock indir_block;
+	uint16_t cur_address = update_to_cur_user_block(file, &user_block, &indir_block);
+
+	for(int i = 0; i < numbytes; i++){
+		
+	}
 
 }
 
@@ -268,6 +287,11 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 	//Test for things that would not allow us to write
 	if(!((file->dentry).file_open)){
 		fserror = FS_FILE_NOT_OPEN;
+		return 0;
+	}
+
+	if(!file_exists(file->file_name)){
+		fserror = FS_FILE_NOT_FOUND;
 		return 0;
 	}
 	
@@ -343,6 +367,12 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 
 int seek_file(File file, unsigned long bytepos){
 
+	if(bytepos >= (MAX_NUM_DENTRY_IN_INODE * SOFTWARE_DISK_BLOCK_SIZE)){
+		fserror = FS_EXCEEDS_MAX_FILE_SIZE;
+		return 0;
+	}
+
+	file->current_pos = (uint32_t) bytepos;
 }
 
 unsigned long file_length(File file){
