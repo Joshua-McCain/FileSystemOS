@@ -409,7 +409,37 @@ int file_exists(char *name){
 }
 
 void fs_print_error(void){
-
+	switch (fserror) {
+  		case FS_NONE:
+    		printf("FS: No error.\n");
+    		break;
+  		case FS_OUT_OF_SPACE:
+    		printf("FS: Software disk at full capacity, possibly did not complete operation.\n");
+    		break;
+  		case FS_FILE_NOT_OPEN:
+ 			printf("FS: Operation requires an open file and was given a close file.\n");
+    		break;
+  		case FS_FILE_OPEN:
+    		printf("FS: Operation requires a closed file and was given an open file.\n");
+    		break;
+		case FS_FILE_NOT_FOUND:
+    		printf("FS: File does not exist, did you delete this file recently?.\n");
+    		break;
+		case FS_FILE_READ_ONLY:
+    		printf("FS: Cannot write to a file whose current mode is read only.\n");
+    		break;
+		case FS_FILE_ALREADY_EXISTS:
+    		printf("FS: Cannot create a file with the name matching an existing file.\n");
+    		break;
+		case FS_EXCEEDS_MAX_FILE_SIZE:
+    		printf("FS: Cannot go beyond the max file size.\n");
+    		break;
+		case FS_ILLEGAL_FILENAME:
+    		printf("FS: Cannot have empty file name or one that goes beyond 512 characters.\n");
+    		break;
+  		default:
+    		printf("FS: Unknown error code %d.\n", sderror);
+  	}
 }
 
 int check_structure_alignment(void){
