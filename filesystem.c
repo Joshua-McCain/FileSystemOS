@@ -15,7 +15,7 @@
  * 259 bytes given the extra 2 fields, the next best multiple dividing into 4096 would be 512 bytes, hence
  * 512 - (3 bytes given by 2 extra fields) = 509 as the "max" file size 
  */
-#define MAX_FILENAME_SIZE 509
+#define MAX_FILENAME_SIZE 507
 
 /* These define statements are for determining how many blocks are allocated to inodes/dentries based on # files
  * permitted on the system.
