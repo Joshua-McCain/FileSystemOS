@@ -142,12 +142,13 @@ void set_inode_bit(BitmapBlock *bblock, int n);
 void clear_inode_bit(BitmapBlock *bblock, int n);
 void write_dentry_to_disk(File file);
 void write_inode_to_disk(File file);
-int find_empty_user_block(void);
+uint16_t find_empty_user_block(void);
 void set_user_bit(BitmapBlock *bblock, int n);
 void clear_user_bit(BitmapBlock *bblock, int n);
 int find_file(char *name);
 int give_inode_new_address(File file);
 uint16_t update_to_cur_user_block(File file, UserDataBlock *user_block, IndirEntryBlock *indir_block);
+void update_max_file_size(File file);
 void set_bit(BitmapBlock *bblock, int n);
 void clear_bit(BitmapBlock *bblock, int n);
 int get_bit(BitmapBlock *bblock, int n);
@@ -352,10 +353,7 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 			//Make sure we don't go over the space allocated for file use, similar to seek file check
 			if(file->current_pos >= (MAX_NUM_DENTRY_IN_INODE * SOFTWARE_DISK_BLOCK_SIZE)){
 				//Update maximum file position
-				if(file->current_pos > (file->inode).file_size){
-					(file->inode).file_size = file->current_pos;
-					write_inode_to_disk(file);
-				}
+				update_max_file_size(file);
 
 				fserror = FS_EXCEEDS_MAX_FILE_SIZE;
 				return i;
@@ -363,10 +361,7 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 
 			if(!give_inode_new_address(file)){
 				//Update maximum file position
-				if(file->current_pos > (file->inode).file_size){
-					(file->inode).file_size = file->current_pos;
-					write_inode_to_disk(file);
-				}
+				update_max_file_size(file);
 
 				fserror = FS_OUT_OF_SPACE;
 				return i;
@@ -386,10 +381,7 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 	write_sd_block(user_block.page, cur_address);
 
 	//Update maximum file position
-	if(file->current_pos > (file->inode).file_size){
-		(file->inode).file_size = file->current_pos;
-		write_inode_to_disk(file);
-	}
+	update_max_file_size(file);
 
 	return numbytes;
 }
@@ -400,6 +392,21 @@ int seek_file(File file, unsigned long bytepos){
 		fserror = FS_EXCEEDS_MAX_FILE_SIZE;
 		return 0;
 	}
+
+	//if the position would put the cursor into indir block space, allocate an indir block
+	if(bytepos >= (NUM_DENTRIES_IN_INODE * SOFTWARE_DISK_BLOCK_SIZE)){
+		uint16_t block_address = find_empty_user_block();
+		if(block_address == -1){
+			fserror = FS_OUT_OF_SPACE;
+			return 0;
+		}
+		else{
+			((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE] = block_address;
+			write_inode_to_disk(file);
+		}
+	}
+
+	update_max_file_size(file);
 
 	file->current_pos = (uint32_t) bytepos;
 }
@@ -627,7 +634,7 @@ void write_inode_to_disk(File file){
  * If the function does not fail, it zeros the user block that is about to be used
  * and sets the bit in bitmap to 1 (in use)
  */
-int find_empty_user_block(void){
+uint16_t find_empty_user_block(void){
 	BitmapBlock user_bits;
 	read_sd_block(user_bits.map, BITMAP_END);
 	int i = 0;
@@ -701,7 +708,7 @@ int give_inode_new_address(File file){
 	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) < NUM_DENTRIES_IN_INODE){
 
 		if(((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] == 0){ //if no address
-			int block_address = find_empty_user_block();
+			uint16_t block_address = find_empty_user_block();
 			if(block_address == -1){
 				return 0; //out of space
 			}
@@ -714,7 +721,7 @@ int give_inode_new_address(File file){
 	else{
 		
 		if(((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE] == 0){ //No address found for indir block
-			int block_address = find_empty_user_block();
+			uint16_t block_address = find_empty_user_block();
 			if(block_address == -1){
 				return 0; //out of space
 			}
@@ -729,7 +736,7 @@ int give_inode_new_address(File file){
 		uint16_t *dir_address = &((indirBlock.dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) - NUM_DENTRIES_IN_INODE]);
 
 		if(*dir_address == 0){ //No address found inside indir block
-			int block_address = find_empty_user_block();
+			uint16_t block_address = find_empty_user_block();
 			if(block_address == -1){
 				return 0; //out of space
 			}
@@ -786,6 +793,13 @@ uint16_t update_to_cur_user_block(File file, UserDataBlock *user_block, IndirEnt
 	}
 
 	return cur_address;
+}
+
+void update_max_file_size(File file){
+	if(file->current_pos > (file->inode).file_size){
+		(file->inode).file_size = file->current_pos;
+		write_inode_to_disk(file);
+	}
 }
 
 
