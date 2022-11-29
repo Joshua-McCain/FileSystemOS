@@ -391,8 +391,13 @@ int delete_file(char *name){
         }
     }
 
+    IndirEntryBlock indir_block;
+    read_sd_block(indirBlock.dir_blocks, ((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE]);
+    uint16_t *dir_address = &((indirBlock.dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) - NUM_DENTRIES_IN_INODE]);
+
+
     //Indirect
-    for(int i = 0; i < SOFTWARE_DISK_BLOCK_SIZE / sizeof(uint16_t); i++){
+    for(int i = 0; i < SOFTWARE_DISK_BLOCK_SIZE / sizeof(uint16_t) && dir_address!=0; i++){
         if(new_inode->dir_blocks)[i] != 0){
             clear_bit(&inode_bits,(i-USER_START));
         }
