@@ -1,3 +1,10 @@
+/* CSC 4103 Filesystems Project 3
+ * Code by:
+ * Joshua McCain
+ * Steven Seiden
+ */
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
