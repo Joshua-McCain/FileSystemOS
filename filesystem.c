@@ -57,6 +57,8 @@
 #define DIRECT_ENTRY_INODE_ADDRESS(b) (b / SOFTWARE_DISK_BLOCK_SIZE)
 #define DIRECT_ENTRY_INODE_WRITEPOS(b) (b % SOFTWARE_DISK_BLOCK_SIZE)
 
+#define MAX_NUM_DENTRY_IN_INODE (NUM_DENTRIES_IN_INODE + (SOFTWARE_DISK_BLOCK_SIZE / sizeof(uint16_t)))
+
 //Bitmap constants that are used in below functions. Credit for these constants found below in bitmaps functions sect.
 typedef uint32_t word_t;
 enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
@@ -75,6 +77,8 @@ int find_empty_user_block(void);
 void set_user_bit(BitmapBlock *bblock, int n);
 void clear_user_bit(BitmapBlock *bblock, int n);
 int find_file(char *name);
+int give_inode_new_address(File file);
+uint16_t update_to_cur_user_block(File file, UserDataBlock *user_block, IndirEntryBlock *indir_block);
 void set_bit(BitmapBlock *bblock, int n);
 void clear_bit(BitmapBlock *bblock, int n);
 int get_bit(BitmapBlock *bblock, int n);
@@ -139,7 +143,7 @@ typedef struct _UserDataBlock {
  */
 struct FileInternals {
 	char file_name[MAX_FILENAME_SIZE];
-	int current_pos;
+	uint32_t current_pos;
 	FileMode mode;
 	Inode inode;
 	DirEntry dentry;
@@ -274,31 +278,49 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 
 	char *new_buf = (char *) buf;
 
-	//Using the current file position, find the memory block in the inode we must write to
-	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) <= NUM_DENTRIES_IN_INODE){
-
-		if(((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] == 0){ //if no address
-			int block_address = find_empty_user_block();
-			if(block_address == -1){
-				fserror = FS_OUT_OF_SPACE;
-				return 0;
-			}
-			else{
-				((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] = block_address;
-			}
-		}
-
+	//give the memory address we need to write to an address for the block it will use.
+	if(!give_inode_new_address(file)){
+		fserror = FS_OUT_OF_SPACE;
+		return 0;
 	}
-	else{ //Otherwise it is in the indir entry block
 
-	}
+	//Get initial user block to use
+	UserDataBlock user_block;
+	IndirEntryBlock indir_block;
+	uint16_t cur_address = update_to_cur_user_block(file, &user_block, &indir_block);
 
 	//Start writing
 	for(int i = 0; i < numbytes; i++){
 
+		//Take into account running out of page space, aka we have moved to a new page here
+		if((file->current_pos) % SOFTWARE_DISK_BLOCK_SIZE == 0){
+			write_sd_block(user_block.page, cur_address);
+
+			//Make sure we don't go over the space allocated for file use, similar to seek file check
+			if(file->current_pos >= (MAX_NUM_DENTRY_IN_INODE * SOFTWARE_DISK_BLOCK_SIZE)){
+				fserror = FS_EXCEEDS_MAX_FILE_SIZE;
+				return i;
+			}
+
+			if(!give_inode_new_address(file)){
+				fserror = FS_OUT_OF_SPACE;
+				return i;
+			}
+
+			cur_address = update_to_cur_user_block(file, &user_block, &indir_block);
+		}
+
+		//Write the character in position
+		(user_block.page)[(file->current_pos) % SOFTWARE_DISK_BLOCK_SIZE] = new_buf[i];
+
+		//Increment writing position
+		file->current_pos += 1;
 	}
 
-	return 0;
+	//Final update to the disk
+	write_sd_block(user_block.page, cur_address);
+
+	return numbytes;
 }
 
 int seek_file(File file, unsigned long bytepos){
@@ -380,7 +402,7 @@ int file_exists(char *name){
 			file_found = 1;
 			break;
 		}
-		i++
+		i++;
 	}
 	
 	return file_found;
@@ -453,7 +475,7 @@ int find_empty_user_block(void){
 	BitmapBlock user_bits;
 	read_sd_block(user_bits.map, BITMAP_END);
 	int i = 0;
-	while (get_bit(user_bits, i)){
+	while (get_bit(&user_bits, i)){
 		i++;
 		if(i == NUM_USER_BLOCKS){
 			return -1;
@@ -500,7 +522,7 @@ int find_file(char *name){
 			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
 			break;
 		}
-		i++
+		i++;
 	}
 
 	//File not found
@@ -508,6 +530,81 @@ int find_file(char *name){
 		i = -1;
 	
 	return i;
+}
+
+/* Given the current position of the cursor, if there is no mem address, give the inode the address it needs
+ * Updates the inode to the software disk if it is written to.
+ *
+ * Returns 0 on failure, 1 if the address was assigned successfully.
+ * 
+ * ***IMPORTANT*** tbh, not too confident in this code. may need overhaul.
+ */
+int give_inode_new_address(File file){
+
+	//Using the current file position, find the memory block in the inode we must write to
+	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) < NUM_DENTRIES_IN_INODE){
+
+		if(((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] == 0){ //if no address
+			int block_address = find_empty_user_block();
+			if(block_address == -1){
+				return 0; //out of space
+			}
+			else{
+				((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)] = block_address;
+				write_inode_to_disk(file);
+			}
+		}
+	}
+	else{
+		
+		if(((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE] == 0){ //No address found for indir block
+			int block_address = find_empty_user_block();
+			if(block_address == -1){
+				return 0; //out of space
+			}
+			else{
+				((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE] = block_address;
+				write_inode_to_disk(file);
+			}
+		}
+		
+		IndirEntryBlock indirBlock;
+		read_sd_block(indirBlock.dir_blocks, ((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE]);
+		uint16_t *dir_address = &((indirBlock.dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) - NUM_DENTRIES_IN_INODE]);
+
+		if(*dir_address == 0){ //No address found inside indir block
+			int block_address = find_empty_user_block();
+			if(block_address == -1){
+				return 0; //out of space
+			}
+			else{
+				*dir_address = block_address;
+				write_sd_block(indirBlock.dir_blocks, ((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE]);
+			}
+		}
+	}
+
+	return 1;
+}
+
+/* Takes in the current File with pointers to predefined user data block and indir entry block.
+ * Updates the values inside user data block and indir entry block to be reflection of the disk.
+ * Returns the address of the user block being worked on in disk so it can be written to later.
+ */
+uint16_t update_to_cur_user_block(File file, UserDataBlock *user_block, IndirEntryBlock *indir_block){
+	
+	uint16_t cur_address;
+	if(DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) < NUM_DENTRIES_IN_INODE){
+		cur_address = ((file->inode).dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos)];
+		read_sd_block(user_block->page, cur_address);
+	}
+	else{
+		read_sd_block(indir_block->dir_blocks, ((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE]);
+		cur_address = (indir_block->dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) - NUM_DENTRIES_IN_INODE];
+		read_sd_block(user_block->page, cur_address);
+	}
+
+	return cur_address;
 }
 
 
