@@ -298,11 +298,23 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 
 			//Make sure we don't go over the space allocated for file use, similar to seek file check
 			if(file->current_pos >= (MAX_NUM_DENTRY_IN_INODE * SOFTWARE_DISK_BLOCK_SIZE)){
+				//Update maximum file position
+				if(file->current_pos > (file->inode).file_size){
+					(file->inode).file_size = file->current_pos;
+					write_inode_to_disk(file);
+				}
+
 				fserror = FS_EXCEEDS_MAX_FILE_SIZE;
 				return i;
 			}
 
 			if(!give_inode_new_address(file)){
+				//Update maximum file position
+				if(file->current_pos > (file->inode).file_size){
+					(file->inode).file_size = file->current_pos;
+					write_inode_to_disk(file);
+				}
+
 				fserror = FS_OUT_OF_SPACE;
 				return i;
 			}
@@ -320,6 +332,12 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 	//Final update to the disk
 	write_sd_block(user_block.page, cur_address);
 
+	//Update maximum file position
+	if(file->current_pos > (file->inode).file_size){
+		(file->inode).file_size = file->current_pos;
+		write_inode_to_disk(file);
+	}
+
 	return numbytes;
 }
 
@@ -329,6 +347,12 @@ int seek_file(File file, unsigned long bytepos){
 
 unsigned long file_length(File file){
 
+	if(!file_exists(file->file_name)){
+		fserror = FS_FILE_NOT_FOUND;
+		return 0;
+	}
+
+	return (file->inode).file_size;
 }
 
 int delete_file(char *name){
