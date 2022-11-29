@@ -275,7 +275,8 @@ void close_file(File file){
 }
 
 unsigned long read_file(File file, void *buf, unsigned long numbytes){
-	
+	fserror = FS_NONE;
+
 	if(!((file->dentry).file_open)){
 		fserror = FS_FILE_NOT_OPEN;
 		return 0;
@@ -320,6 +321,7 @@ unsigned long read_file(File file, void *buf, unsigned long numbytes){
 }
 
 unsigned long write_file(File file, void *buf, unsigned long numbytes){
+	fserror = FS_NONE;
 
 	//Test for things that would not allow us to write
 	if(!((file->dentry).file_open)){
@@ -394,6 +396,7 @@ unsigned long write_file(File file, void *buf, unsigned long numbytes){
 }
 
 int seek_file(File file, unsigned long bytepos){
+	fserror = FS_NONE;
 
 	if(bytepos >= (MAX_NUM_DENTRY_IN_INODE * SOFTWARE_DISK_BLOCK_SIZE)){
 		fserror = FS_EXCEEDS_MAX_FILE_SIZE;
@@ -419,6 +422,7 @@ int seek_file(File file, unsigned long bytepos){
 }
 
 unsigned long file_length(File file){
+	fserror = FS_NONE;
 
 	if(!file_exists(file->file_name)){
 		fserror = FS_FILE_NOT_FOUND;
@@ -429,7 +433,7 @@ unsigned long file_length(File file){
 }
 
 int delete_file(char *name){
-	//(data) -> inode -> dir entry -> inode bitmap
+	fserror = FS_NONE;
 
     //Check to make sure the file exists
     if(!file_exists(name)){
@@ -437,72 +441,76 @@ int delete_file(char *name){
         return 0;
     }
 
-    BitmapBlock inode_bits;
+
+	//Get all info related to file
+	BitmapBlock inode_bits;
     read_sd_block(inode_bits.map, BITMAP_START);
 
-    // Perhaps very broken
+	BitmapBlock user_bits;
+	read_sd_block(user_bits.map, BITMAP_END);
 
-    //dir_blocks contain data
-    //Clearing out data
+	int dentry_pos = find_file(name);
 
-    File ret_file;
-    int dentry_pos = find_file(name);
-
-    DirEntryBlock dentry_block;
+	DirEntryBlock dentry_block;
     read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
     DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(dentry_pos)]);
 
-    bzero(new_dentry,sizeof(DirEntry));
-    memcpy(&(ret_file->dentry), new_dentry, sizeof(DirEntry));
+	InodeBlock inode_block;
+	read_sd_block(inode_block.inodes, BLOCK_OF_INODE(new_dentry->inode_idx));
+	Inode* new_inode = &((inode_block.inodes)[ADDRESS_OF_INODE(new_dentry->inode_idx)]);
 
-    InodeBlock inode_block;
-    read_sd_block(inode_block.inodes, BLOCK_OF_INODE(dentry_pos));
-    Inode* new_inode = &((inode_block.inodes)[ADDRESS_OF_INODE(dentry_pos)]);
 
-    //Direct
-    for(int i = 0; i < NUM_DENTRIES_IN_INODE; i++){
-        if(new_inode->dir_blocks)[i] != 0){
-            clear_bit(&inode_bits,(i-USER_START));
+	//Check for open files
+	if(new_dentry->file_open){
+		fserror = FS_FILE_OPEN;
+		return 0;
+	}
+
+
+	//Delete bitmap data for all inode mem addresses
+	//Direct addresses
+	for(int i = 0; i < NUM_DENTRIES_IN_INODE; i++){
+        if((new_inode->dir_blocks)[i] != 0){
+            clear_bit(&user_bits, ((new_inode->dir_blocks)[i]) - USER_START);
         }
     }
 
-    IndirEntryBlock indir_block;
-    read_sd_block(indirBlock.dir_blocks, ((file->inode).dir_blocks)[NUM_DENTRIES_IN_INODE]);
-    uint16_t *dir_address = &((indirBlock.dir_blocks)[DIRECT_ENTRY_INODE_ADDRESS(file->current_pos) - NUM_DENTRIES_IN_INODE]);
+    //Indirect addresses, but only if necessary
+	if((new_inode->dir_blocks)[NUM_DENTRIES_IN_INODE] != 0){
+		//Grab block
+    	IndirEntryBlock indir_block;
+    	read_sd_block(indir_block.dir_blocks, (new_inode->dir_blocks)[NUM_DENTRIES_IN_INODE]);
+    	
+		//Loop through its direct mem addresses, unlinking from the bitmap
+		for(int i = 0; i < SOFTWARE_DISK_BLOCK_SIZE / sizeof(uint16_t); i++){
+			if((indir_block.dir_blocks)[i] != 0){
+				clear_bit(&user_bits, ((indir_block.dir_blocks)[i]) - USER_START);
+			}
+		}
+
+		//Unlink the indir mem address itself
+		clear_bit(&user_bits, ((new_inode->dir_blocks)[NUM_DENTRIES_IN_INODE]) - USER_START);
+	}
 
 
-    //Indirect
-    for(int i = 0; i < SOFTWARE_DISK_BLOCK_SIZE / sizeof(uint16_t) && dir_address!=0; i++){
-        if(new_inode->dir_blocks)[i] != 0){
-            clear_bit(&inode_bits,(i-USER_START));
-        }
-    }
+	//Data inside inode is now clear, good to clear the inode
+	bzero(new_inode, sizeof(Inode));
+
+	//Don't need data inside dentry either
+	bzero(new_dentry, sizeof(DirEntry));
 
 
-    //MAKE SURE TO WRITE THE CHANGES AFTER DONE CLEARNING
+	//Now that we have "deleted" all associated meta data with the file, we clear the inode bit
+	clear_bit(&inode_bits, dentry_pos);
 
 
+    //Everything is cleared, write the changes to the disk
+	write_sd_block(inode_bits.map, BITMAP_START);
+	write_sd_block(user_bits.map, BITMAP_END);
+	write_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
+	write_sd_block(inode_block.inodes, BLOCK_OF_INODE(dentry_pos));
 
-
-    char zeroData buffer[sizeOf(dentry_block.dentries)] = {0};
-    write_sd_block(zeroData, BLOCK_OF_DENTRY((file->dentry).inode_idx));
-
-    //Clearing the block
-    bzero(BLOCK_OF_DENTRY((file->dentry).inode_idx),sizeof(BLOCK_OF_DENTRY((file->dentry).inode_idx)));
-
-    //Clearing the inode
-    char zeroInode buffer[sizeOf(inode_block.inodes)] = {0};
-    write_sd_block(zeroInode, BLOCK_OF_INODE((file->dentry).inode_idx));
-
-    //Clearing the dir entry
-    bzero(&(file->dentry),sizeof(DirEntry));
-
-    //Clearing the inode bitmap
-    //broken!! use clear_bit of bitmap
-    //read in bitmap (inode block, dentry block using dentry_pos) beforehand
-    //go through every memory addr in inode set to something (the stuff user wrote) and set to 0
-
-    set_bit(inode_bits.map, 0);
+	return 1;
 }
 
 /* Similar to the support function find_file, except, instead of returning the address of the dentry,
