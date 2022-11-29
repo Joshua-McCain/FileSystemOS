@@ -15,7 +15,7 @@
  * 259 bytes given the extra 2 fields, the next best multiple dividing into 4096 would be 512 bytes, hence
  * 512 - (3 bytes given by 2 extra fields) = 509 as the "max" file size 
  */
-#define MAX_FILENAME_SIZE 507
+#define MAX_FILENAME_SIZE 509
 
 /* These define statements are for determining how many blocks are allocated to inodes/dentries based on # files
  * permitted on the system.
@@ -82,7 +82,7 @@ typedef struct _BitmapBlock {
  *
  * ***Credit to Dr. Golden for this struct*** 
  */
-typedef struct _DirEntry {
+typedef struct __attribute__((packed)) _DirEntry {
 	uint8_t file_open;
 	uint16_t inode_idx;
 	char file_name[MAX_FILENAME_SIZE];
