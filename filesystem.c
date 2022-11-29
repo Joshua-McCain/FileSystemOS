@@ -32,13 +32,13 @@
  * block available for user input.
  */
 #define MAX_FILES_SUPPORTED 512
-#define NUM_INODE_IN_BLOCK (SOFTWARE_DISK_BLOCK_SIZE / sizeof(Inode)) // 4096 / 32 = *128*
-#define NUM_DENTRY_IN_BLOCK (SOFTWARE_DISK_BLOCK_SIZE / sizeof(DirEntry)) // 4096 / 512 = *8*
+#define NUM_INODE_IN_BLOCK 128 //(SOFTWARE_DISK_BLOCK_SIZE / sizeof(Inode)) // 4096 / 32 = *128*
+#define NUM_DENTRY_IN_BLOCK 8 //(SOFTWARE_DISK_BLOCK_SIZE / sizeof(DirEntry)) // 4096 / 512 = *8*
 
-#define INODE_BLOCKS ceil(MAX_FILES_SUPPORTED / NUM_INODE_IN_BLOCK) // 512 / 128 = *4*
-#define DENTRY_BLOCKS ceil(MAX_FILES_SUPPORTED / NUM_DENTRY_IN_BLOCK) // 512 / 8 = *64*
-#define SETUP_BLOCKS (2 + INODE_BLOCKS + DENTRY_BLOCKS) // 70
-#define NUM_USER_BLOCKS (software_disk_size() - SETUP_BLOCKS) // 4096 - 70 = *4026*
+#define INODE_BLOCKS 4 //ceil(MAX_FILES_SUPPORTED / NUM_INODE_IN_BLOCK) // 512 / 128 = *4*
+#define DENTRY_BLOCKS 64 //ceil(MAX_FILES_SUPPORTED / NUM_DENTRY_IN_BLOCK) // 512 / 8 = *64*
+#define SETUP_BLOCKS 70 //(2 + INODE_BLOCKS + DENTRY_BLOCKS) // 70
+#define NUM_USER_BLOCKS 4026 //(software_disk_size() - SETUP_BLOCKS) // 4096 - 70 = *4026*
 
 //The following values start from 0 blocks on the disk, with the values shown being the start
 //and final block of that section, inclusive on both.
@@ -46,11 +46,11 @@
 //BITMAP_START is the inode bitmap, BITMAP_END is the user space block bitmap
 #define BITMAP_START 0
 #define BITMAP_END 1
-#define INODE_START (BITMAP_END + 1) // 2
-#define INODE_END (INODE_START + INODE_BLOCKS) - 1 // 2 + 4 = *5*
-#define DENTRY_START (INODE_END + 1) // 6
-#define DENTRY_END (DENTRY_START + DENTRY_BLOCKS) - 1 // 6 + 64 - 1 = *69*
-#define USER_START (DENTRY_END + 1) // 70, note how it matches MAX_SETUP_BLOCKS
+#define INODE_START 2 //(BITMAP_END + 1) // 2
+#define INODE_END 5 //(INODE_START + INODE_BLOCKS) - 1 // 2 + 4 = *5*
+#define DENTRY_START 6 //(INODE_END + 1) // 6
+#define DENTRY_END 69 //(DENTRY_START + DENTRY_BLOCKS) - 1 // 6 + 64 - 1 = *69*
+#define USER_START 70 //(DENTRY_END + 1) // 70, note how it matches MAX_SETUP_BLOCKS
 #define USER_END (software_disk_size() - 1)
 
 //Update with caution, this value must keep Inode struct's size a multiple of 4096, which is the size of a block.
@@ -692,6 +692,7 @@ int find_file(char *name){
 	while (i < MAX_FILES_SUPPORTED){
 		//Aka, we hit a new block of dentries
 		if(ADDRESS_OF_DENTRY(i) == 0){
+
 			read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(i));
 		}
 
