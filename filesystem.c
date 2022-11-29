@@ -428,13 +428,13 @@ unsigned long file_length(File file){
 	return (file->inode).file_size;
 }
 
-/*int delete_file(char *name){
+int delete_file(char *name){
 	//(data) -> inode -> dir entry -> inode bitmap
 
     //Check to make sure the file exists
     if(!file_exists(name)){
         fserror = FS_FILE_NOT_FOUND;
-        return NULL;
+        return 0;
     }
 
     BitmapBlock inode_bits;
@@ -452,7 +452,7 @@ unsigned long file_length(File file){
     read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
     DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(dentry_pos)]);
 
-    bzero(new_dentry,sizeof(new_dentry));
+    bzero(new_dentry,sizeof(DirEntry));
     memcpy(&(ret_file->dentry), new_dentry, sizeof(DirEntry));
 
     InodeBlock inode_block;
@@ -503,7 +503,7 @@ unsigned long file_length(File file){
     //go through every memory addr in inode set to something (the stuff user wrote) and set to 0
 
     set_bit(inode_bits.map, 0);
-}*/
+}
 
 /* Similar to the support function find_file, except, instead of returning the address of the dentry,
  * This will return 1 if it exits and 0 if not.
