@@ -153,7 +153,9 @@ void clear_bit(BitmapBlock *bblock, int n);
 int get_bit(BitmapBlock *bblock, int n);
 
 
+//------------GLOBALS------------
 
+FSError fserror;
 
 //------------FILESYSTEM FUNCTIONS------------
 
@@ -487,7 +489,7 @@ unsigned long file_length(File file){
     //go through every memory addr in inode set to something (the stuff user wrote) and set to 0
 
     set_bit(inode_bits.map, 0);
-}/*
+}*/
 
 /* Similar to the support function find_file, except, instead of returning the address of the dentry,
  * This will return 1 if it exits and 0 if not.
