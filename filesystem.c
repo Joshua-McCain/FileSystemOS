@@ -364,19 +364,43 @@ int delete_file(char *name){
         return NULL;
     }
 
+    BitmapBlock inode_bits;
+    read_sd_block(inode_bits.map, BITMAP_START);
 
     // Perhaps very broken
-    int dentry_pos = find_file(name);
-
 
     //dir_blocks contain data
     //Clearing out data
+    int dentry_pos = find_file(name);
+
     DirEntryBlock dentry_block;
     read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(dentry_pos));
     DirEntry* new_dentry = &((dentry_block.dentries)[ADDRESS_OF_DENTRY(dentry_pos)]);
 
     bzero(new_dentry,sizeof(new_dentry));
     memcpy(&(ret_file->dentry), new_dentry, sizeof(DirEntry));
+
+    InodeBlock inode_block;
+    read_sd_block(inode_block.inodes, BLOCK_OF_INODE(dentry_pos));
+    Inode* new_inode = &((inode_block.inodes)[ADDRESS_OF_INODE(dentry_pos)]);
+
+    //Direct
+    for(int i = 0; i < NUM_DENTRIES_IN_INODE; i++){
+        if(new_inode->dir_blocks)[i] != 0){
+            clear_bit(&inode_bits,(i-USER_START));
+        }
+    }
+
+    //Indirect
+    for(int i = 0; i < SOFTWARE_DISK_BLOCK_SIZE / sizeof(uint16_t); i++){
+        if(new_inode->dir_blocks)[i] != 0){
+            clear_bit(&inode_bits,(i-USER_START));
+        }
+    }
+
+
+    //MAKE SURE TO WRITE THE CHANGES AFTER DONE CLEARNING
+
 
 
 
