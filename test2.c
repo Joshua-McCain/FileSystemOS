@@ -5,118 +5,68 @@
 
 // RUN formatfs before conducting this test!
 
-
 int main(int argc, char *argv[]) {
-  int ret;
+  int ret, i, num_supported=0;
+  unsigned long len;
   File f;
-  char buf[1000];
+  char buf[1000], buf2[1000];
+  
+  // create a bunch of tiny files to see how many are supported
+  for (i=0; i < 100000; i++) {
+    sprintf(buf, "%1d.dat", i);
+    f=create_file(buf);
+    printf("ret from create_file(\"%s\") = %p\n",
+	   buf, f);
+    fs_print_error();
+    if (! f) {
+      break;
+    }
 
-  // should fail, file doesn't exist
-  printf("ret from delete_file(\"blarg\") = %d\n",
-	 delete_file("blarg"));
-  fs_print_error();
-
-  // should fail, file doesn't exist
-  f = open_file("blarg", READ_ONLY);
-  printf("ret from open_file(\"blarg\", READ_ONLY) = %p\n",
-	 f);
-  fs_print_error();
-  if (f) {
-    goto fail;
-  }
-
-  printf("1\n");
-
-  // should succeed
-  f = create_file("blarg");
-
-  printf("2\n");
+    num_supported++;
     
-  printf("ret from create_file(\"blarg\") = %p\n",
-	 f);
-  fs_print_error();
-  
-  if (! f) {
-    goto fail;
-  }
-  
-  // should succeed
-  close_file(f);
-  printf("Executed close_file(f).\n");
-  fs_print_error();
-  
-  // should fail, file now exists
-  f = create_file("blarg");
-  printf("ret from create_file(\"blarg\") = %p\n",
-	 f);
-  fs_print_error();
-  if (f) {
-    goto fail;
-  }
-  
-  // should fail, file not open
-  close_file(f);
-  printf("Executed close_file(f).\n");
-  fs_print_error();
-  
-  // should succeed
-  f=open_file("blarg", READ_ONLY);
-  printf("ret from open_file(\"blarg\", READ_ONLY) = %p\n",
-	 f);
-  fs_print_error();
+    sprintf(buf, "hello, %1d", i);
+    ret=write_file(f, buf, strlen(buf)+1);
+    printf("ret from write_file(f, \"%s\", strlen(\"%s\") = %d\n",
+	   buf, buf, ret);
+    fs_print_error();
+    if (! ret) {
+      break;
+    }
 
-  if (! f) {
-    goto fail;
-  }
-  
-  // should fail, file is open for read-only
-  ret = write_file(f, "hello", strlen("hello"));
-  printf("ret from write_file(f, \"hello\", strlen(\"hello\") = %d\n",
-	 ret);
-  fs_print_error();
-  
-  // should succeed
-  close_file(f);
-  printf("Executed close_file(f).\n");
-  fs_print_error();
-  
-  // should succeed
-  f = open_file("blarg", READ_WRITE);
-  printf("ret from open_file(\"blarg\", READ_WRITE) = %p\n",
-	 f);
-  fs_print_error();
+    seek_file(f, 0);
+    bzero(buf2, 1000);
+    ret=read_file(f, buf2, 1000);
+    printf("ret from read_file(f, buf2, 1000) = %d\n",
+	   ret);
+    printf("buf2=\"%s\"\n", buf2);
+    fs_print_error();
+    if (! ret) {
+      break;
+    }
 
-  if (! f) {
-    goto fail;
+    len=file_length(f);
+    printf("ret from file_length(f) = %lu\n",
+	   len);
+    fs_print_error();
+    if (! len) {
+      break;
+    }
+    
+    close_file(f);
+    printf("Executed close_file(f).\n");
+    fs_print_error();
   }
-  
-  // should succeed, file is now open for read-write
-  ret = write_file(f, "hello", strlen("hello"));
-  printf("ret from write_file(f, \"hello\", strlen(\"hello\") = %d\n",
-	 ret);
-  fs_print_error();
-  
-  // should succeed
-  printf("Seeking to beginning of file.\n");
-  seek_file(f, 0);
-  fs_print_error();
-  
-  // should succeed
-  bzero(buf, 1000);
-  ret=read_file(f, buf, strlen("hello"));
-  printf("ret from read_file(f, buf, strlen(\"hello\") = %d\n",
-	 ret);
-  printf("buf=\"%s\"\n", buf);
-  fs_print_error();
-  
-  // should succeed
-  close_file(f);
-  printf("Executed close_file(f).\n");
-  fs_print_error();
-  
-  return 0;
-  
- fail:
-  printf("FAIL.  Was formatfs run before this test?\n");
+
+  // now check to see if they all exist
+  if (num_supported == 0) {
+    printf("FAIL.  Was formatfs run before this test?\n");
+  }
+  else {
+    for (i=0; i < num_supported; i++) {
+      sprintf(buf, "%1d.dat", i);
+      printf("File \"%s\" %s.\n", buf, file_exists(buf) ? "exists" : "does not exist");
+    }
+  }
+    
   return 0;
 }
