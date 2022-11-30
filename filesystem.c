@@ -198,6 +198,8 @@ File open_file(char *name, FileMode mode){
 
 	//Make new File for the user and return
 	File ret_file;
+	ret_file = malloc(sizeof(struct FileInternals));
+
 	ret_file->current_pos = 0;
 	strcpy(ret_file->file_name, name);
 	ret_file->mode = mode;
@@ -259,11 +261,12 @@ File create_file(char *name){
 void close_file(File file){
 	fserror = FS_NONE;
 
-	if(file_exists(file->file_name)){
+	if(file != NULL && file_exists(file->file_name)){
 
 		if((file->dentry).file_open){
 			(file->dentry).file_open = 0;
 			write_dentry_to_disk(file);
+			//free(file);
 		}
 		else{
 			fserror = FS_FILE_NOT_OPEN;
