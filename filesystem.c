@@ -422,6 +422,7 @@ int seek_file(File file, unsigned long bytepos){
 	update_max_file_size(file);
 
 	file->current_pos = (uint32_t) bytepos;
+	return 1;
 }
 
 unsigned long file_length(File file){
@@ -429,7 +430,6 @@ unsigned long file_length(File file){
 
 	if(!file_exists(file->file_name)){
 		fserror = FS_FILE_NOT_FOUND;
-		return 0;
 	}
 
 	return (file->inode).file_size;
@@ -533,7 +533,7 @@ int file_exists(char *name){
 		if(ADDRESS_OF_DENTRY(i) == 0){
 			read_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(i));
 		}
-
+		
 		//If the current position is occupied by a file with the name we are attempting to match
 		if(get_bit(&inode_bits, i) && !strcmp(((dentry_block.dentries)[ADDRESS_OF_DENTRY(i)]).file_name, name)) {
 			//i is set to the right dir entry, and the block is set correctly. Exit the loop.
