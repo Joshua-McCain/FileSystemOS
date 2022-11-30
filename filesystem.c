@@ -250,7 +250,7 @@ File create_file(char *name){
 	write_sd_block(dentry_block.dentries, BLOCK_OF_DENTRY(inode_pos));
 
 	//Call the open file method
-	File ret_file = open_file(name, READ_WRITE);
+        File ret_file = open_file(name, READ_WRITE);
 
 	//Return the File
 	return ret_file;
